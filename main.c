@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <string.h>
 
+// Function declarations
 void swap(int *a, int *b);
 void printArray(int array[], int size);
 void copyArray(int source[], int dest[], int size);
@@ -9,10 +13,15 @@ void bubbleSort(int array[], int size);
 void improvedBubbleSort(int array[], int size);
 void selectionSort(int array[], int size);
 void quickSort(int array[], int low, int high);
-int partition(int array[], int low, int high); // Declaration for partition
+int partition(int array[], int low, int high);
 void improvedQuickSort(int array[], int low, int high);
 void mergeSort(int array[], int l, int r);
-void merge(int arr[], int l, int m, int r); // Declaration for merge
+void merge(int arr[], int l, int m, int r);
+void saveArrayToFile(int array[], int size, const char *filename);
+double averageTime(double times[], int count);
+void quickSortWrapper(int *array, int size);
+void improvedQuickSortWrapper(int *array, int size);
+void mergeSortWrapper(int *array, int size);
 
 // ANSI Color Codes
 #define RED "\x1b[31m"
@@ -23,7 +32,15 @@ void merge(int arr[], int l, int m, int r); // Declaration for merge
 #define CYAN "\x1b[36m"
 #define RESET "\x1b[0m"
 
-// Utility functions
+typedef struct
+{
+    int *baseArray;
+    int size;
+    void (*sortFunction)(int *, int);
+    char *sortName;
+    char *fileName;
+} SortArgs;
+
 void swap(int *a, int *b)
 {
     int temp = *a;
@@ -44,7 +61,47 @@ void copyArray(int source[], int dest[], int size)
         dest[i] = source[i];
 }
 
-// Sorting algorithms
+void saveArrayToFile(int array[], int size, const char *filename)
+{
+    FILE *file = fopen(filename, "w");
+    if (file == NULL)
+    {
+        perror("Error opening file");
+        return;
+    }
+    for (int i = 0; i < size; i++)
+    {
+        fprintf(file, "%d\n", array[i]);
+    }
+    fclose(file);
+}
+
+double averageTime(double times[], int count)
+{
+    double sum = 0;
+    for (int i = 1; i < count; i++)
+    {
+        sum += times[i];
+    }
+    return sum / (count - 1); // Exclude the first run
+}
+
+// Wrapper functions for the sorting algorithms that require three parameters
+void quickSortWrapper(int *array, int size)
+{
+    quickSort(array, 0, size - 1);
+}
+
+void improvedQuickSortWrapper(int *array, int size)
+{
+    improvedQuickSort(array, 0, size - 1);
+}
+
+void mergeSortWrapper(int *array, int size)
+{
+    mergeSort(array, 0, size - 1);
+}
+
 void bubbleSort(int array[], int size)
 {
     int i, j;
@@ -68,7 +125,7 @@ void improvedBubbleSort(int array[], int size)
                 swapped = 1;
             }
         }
-        if (swapped == 0)
+        if (!swapped)
             break;
     }
 }
@@ -100,7 +157,7 @@ int partition(int array[], int low, int high)
 {
     int pivot = array[high];
     int i = (low - 1);
-    for (int j = low; j <= high - 1; j++)
+    for (int j = low; j < high; j++)
     {
         if (array[j] < pivot)
         {
@@ -144,7 +201,8 @@ void merge(int arr[], int l, int m, int r)
     int n1 = m - l + 1;
     int n2 = r - m;
 
-    int L[n1], R[n2];
+    int *L = malloc(n1 * sizeof(int));
+    int *R = malloc(n2 * sizeof(int));
 
     for (i = 0; i < n1; i++)
         L[i] = arr[l + i];
@@ -175,80 +233,92 @@ void merge(int arr[], int l, int m, int r)
         i++;
         k++;
     }
-
     while (j < n2)
     {
         arr[k] = R[j];
         j++;
         k++;
     }
+
+    free(L);
+    free(R);
 }
 
-// Main function to test the sorting algorithms
-int main()
+void runSortingTests(int *fullArray, int size)
 {
-    int size = 100000; // Adjust size as needed for your tests
     int *baseArray = malloc(size * sizeof(int));
-    int *array = malloc(size * sizeof(int));
+    memcpy(baseArray, fullArray, size * sizeof(int)); // Copy only the needed portion
 
-    // Populate baseArray with random numbers
-    srand(time(NULL));
-    for (int i = 0; i < size; i++)
-        baseArray[i] = rand() % size;
+    char baseFilename[256];
+    snprintf(baseFilename, sizeof(baseFilename), "arrays/base_array_%d.txt", size);
+    saveArrayToFile(baseArray, size, baseFilename); // Save the base array with size label
 
-    // Measure sorting times
-    clock_t start, end;
-    double cpu_time_used;
+    SortArgs args[] = {
+        {baseArray, size, bubbleSort, "Bubble Sort", "bubble_sorted"},
+        {baseArray, size, improvedBubbleSort, "Improved Bubble Sort", "improved_bubble_sorted"},
+        {baseArray, size, selectionSort, "Selection Sort", "selection_sorted"},
+        {baseArray, size, quickSortWrapper, "Quick Sort", "quick_sorted"},
+        {baseArray, size, improvedQuickSortWrapper, "Improved Quick Sort", "improved_quick_sorted"},
+        {baseArray, size, mergeSortWrapper, "Merge Sort", "merge_sorted"}};
 
-    printf(GREEN "Testing Bubble Sort...\n" RESET);
-    copyArray(baseArray, array, size);
-    start = clock();
-    bubbleSort(array, size);
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf(GREEN "Bubble Sort took %f seconds to execute \n" RESET, cpu_time_used);
+    for (int i = 0; i < 6; i++)
+    {
+        int *array = malloc(args[i].size * sizeof(int));
+        double times[5];
+        clock_t start, end;
+        FILE *logFile;
 
-    printf(YELLOW "Testing Improved Bubble Sort...\n" RESET);
-    copyArray(baseArray, array, size);
-    start = clock();
-    improvedBubbleSort(array, size);
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf(YELLOW "Improved Bubble Sort took %f seconds to execute \n" RESET, cpu_time_used);
+        char logFilename[256];
+        snprintf(logFilename, sizeof(logFilename), "outputs/%s_times.txt", args[i].fileName); // Create filename for log
+        logFile = fopen(logFilename, "a");                                                    // Open in append mode
 
-    printf(BLUE "Testing Selection Sort...\n" RESET);
-    copyArray(baseArray, array, size);
-    start = clock();
-    selectionSort(array, size);
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf(BLUE "Selection Sort took %f seconds to execute \n" RESET, cpu_time_used);
+        char sortedFilename[256];
+        snprintf(sortedFilename, sizeof(sortedFilename), "sorted/%s_%d.txt", args[i].fileName, args[i].size); // Path for sorted array
 
-    printf(RED "Testing Quick Sort...\n" RESET);
-    copyArray(baseArray, array, size);
-    start = clock();
-    quickSort(array, 0, size - 1);
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf(RED "Quick Sort took %f seconds to execute \n" RESET, cpu_time_used);
+        for (int j = 0; j < 5; j++)
+        {
+            copyArray(args[i].baseArray, array, args[i].size);
+            start = clock();
+            args[i].sortFunction(array, args[i].size);
+            end = clock();
+            times[j] = ((double)(end - start)) / CLOCKS_PER_SEC;
+            fprintf(logFile, "Run %d: %f seconds\n", j + 1, times[j]);
+            printf("%s%s - Run %d: %f seconds%s\n", BLUE, args[i].sortName, j + 1, times[j], RESET);
+        }
+        double avgTime = averageTime(times, 5);
+        fprintf(logFile, "Size : %d, Average time (excluding first run): %f seconds\n", args[i].size, avgTime);
+        printf("%s for %d size,  Average time (excluding first run) for %s: %f seconds%s\n", GREEN, args[i].size, args[i].sortName, avgTime, RESET);
 
-    printf(MAGENTA "Testing Improved Quick Sort...\n" RESET);
-    copyArray(baseArray, array, size);
-    start = clock();
-    improvedQuickSort(array, 0, size - 1);
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf(MAGENTA "Improved Quick Sort took %f seconds to execute \n" RESET, cpu_time_used);
+        fclose(logFile);
 
-    printf(CYAN "Testing Merge Sort...\n" RESET);
-    copyArray(baseArray, array, size);
-    start = clock();
-    mergeSort(array, 0, size - 1);
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf(CYAN "Merge Sort took %f seconds to execute \n" RESET, cpu_time_used);
+        saveArrayToFile(array, args[i].size, sortedFilename); // Save the sorted array to the sorted directory
+        free(array);
+    }
 
     free(baseArray);
-    free(array);
+}
+
+int main()
+{
+    const int max_size = 100000;
+    // const int max_size = 20000000;
+    int *fullArray = malloc(max_size * sizeof(int));
+    srand(time(NULL));
+    for (int i = 0; i < max_size; i++)
+    {
+        fullArray[i] = rand() % max_size; // Generate the full array only once
+    }
+
+    int sizes[] = {100, 1000, 10000, 100000};
+    // int sizes[] = {20000000};
+    int num_sizes = sizeof(sizes) / sizeof(sizes[0]);
+
+    for (int i = 0; i < num_sizes; i++)
+    {
+        printf("%sRunning sorting tests for size: %d%s\n", CYAN, sizes[i], RESET);
+        runSortingTests(fullArray, sizes[i]); // Pass only the needed portion
+    }
+
+    free(fullArray);
     return 0;
 }
